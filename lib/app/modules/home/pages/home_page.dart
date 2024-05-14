@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:archive/archive_io.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'dart:convert';
 import 'package:get/get.dart';
 import 'package:path/path.dart' as path;
@@ -117,7 +118,7 @@ class HomePage extends GetView<HomeController> {
                                       "${path.basename(outputDirectory.path)}.zip",
                                     );
                                     if (await keyFile.exists()) {
-                                      // Renomear o arquivo para key.txt
+                                      
                                       String newFilePath =
                                           "${finalOutputDirectory.path}/key.txt";
                                       await keyFile.rename(newFilePath);
@@ -188,17 +189,32 @@ class HomePage extends GetView<HomeController> {
   }
 
   Future<void> encryptFile(String inputPath, String outputPath) async {
-    controller.processingMessage.value = '';
-    controller.processing.value = true;
+  // Define a mensagem de processamento e o estado de processamento
+  controller.processingMessage.value = '';
+  controller.processing.value = true;
+  
+  File? tempExecutable; // Variável para armazenar o arquivo temporário
 
+  try {
+    // Carrega o executável diretamente dos ativos
+    ByteData executableData = await rootBundle.load('assets/mcrputil.exe');
+    List<int> bytes = executableData.buffer.asUint8List();
+
+    // Cria o arquivo temporário
+    tempExecutable = File('$outputPath/mcrputil.exe');
+    await tempExecutable.writeAsBytes(bytes);
+
+    // Cria o diretório de saída
     Directory(outputPath).createSync(recursive: true);
 
+    // Inicia o processo
     var process = await Process.start(
-      'assets/mcrputil',
+      tempExecutable.path,
       ['encrypt', inputPath, outputPath],
       runInShell: false,
     );
 
+    // Manipula a saída padrão do processo
     process.stdout.transform(utf8.decoder).listen((data) {
       List<String> lines = data.split('\n');
       for (String line in lines) {
@@ -211,6 +227,7 @@ class HomePage extends GetView<HomeController> {
       }
     });
 
+    // Manipula a saída de erro do processo
     process.stderr.transform(utf8.decoder).listen((data) {
       List<String> lines = data.split('\n');
       for (String line in lines) {
@@ -223,17 +240,28 @@ class HomePage extends GetView<HomeController> {
       }
     });
 
+    // Aguarda o término do processo
     var exitCode = await process.exitCode;
-    if (exitCode == 0) {
-      controller.processingMessage.value =
-          'Arquivos criptografados com sucesso.';
-    } else {
-      controller.processingMessage.value =
-          'Ocorreu um erro durante a criptografia dos arquivos.';
-    }
 
-    controller.processing.value = false;
+    // Define a mensagem de processamento com base no código de saída
+    if (exitCode == 0) {
+      controller.processingMessage.value = 'Arquivos criptografados com sucesso.';
+    } else {
+      controller.processingMessage.value = 'Ocorreu um erro durante a criptografia dos arquivos.';
+    }
+  } catch (e) {
+    // Em caso de erro, define a mensagem de processamento
+    controller.processingMessage.value = 'Erro ao executar o processo: $e';
+  } finally {
+    // Remove o arquivo temporário, se existir
+    if (tempExecutable != null && tempExecutable.existsSync()) {
+      tempExecutable.deleteSync();
+    }
   }
+
+  // Define o estado de processamento como false
+  controller.processing.value = false;
+}
 
   Future<void> zipDirectory(String directoryPath, String outputPath) async {
     var encoder = ZipFileEncoder();
@@ -278,7 +306,7 @@ class HomePage extends GetView<HomeController> {
         await folder.delete();
       }
     } catch (e) {
-      //erro
+      //mostrar erro
     }
   }
 }

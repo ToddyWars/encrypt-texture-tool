@@ -42,4 +42,6 @@ flutter_launcher_icons:
     icon_size: 48
 
 flutter:
+  assets:
+    - assets/mcrputil.exe
   uses-material-design: true
